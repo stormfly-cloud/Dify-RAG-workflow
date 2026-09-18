@@ -48,7 +48,6 @@ type WizardValues = {
   reranking_enable: boolean
   reranking_provider_name?: string
   reranking_model_name?: string
-  weight_type: 'semantic_first' | 'keyword_first' | 'customized'
   vector_weight: number
   keyword_weight: number
 }
@@ -70,9 +69,17 @@ const initialValues: WizardValues = {
   score_threshold_enabled: false,
   score_threshold: 0.5,
   reranking_enable: false,
-  weight_type: 'semantic_first',
   vector_weight: 0.7,
   keyword_weight: 0.3,
+}
+
+function clampWeight(value: number | null) {
+  if (value === null || Number.isNaN(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+function complementaryWeight(value: number) {
+  return Math.round((1 - value) * 100) / 100
 }
 
 export function CreateKnowledgeWizard({
@@ -158,7 +165,7 @@ export function CreateKnowledgeWizard({
         weights:
           current.search_method === 'hybrid_search'
             ? {
-                weight_type: current.weight_type,
+                weight_type: 'customized',
                 vector_setting: {
                   vector_weight: current.vector_weight,
                   embedding_model_name: current.embedding_model,
@@ -351,15 +358,12 @@ export function CreateKnowledgeWizard({
           </div>
 
           <div hidden={step !== 3}>
-            <Form.Item label="召回方式" name="search_method">
-              <Select
-                options={[
-                  { value: 'hybrid_search', label: '混合检索' },
-                  { value: 'semantic_search', label: '语义检索' },
-                  { value: 'full_text_search', label: '全文检索' },
-                  { value: 'keyword_search', label: '关键词检索' },
-                ]}
-              />
+            <Form.Item label="检索设置" name="search_method">
+              <Radio.Group optionType="button" buttonStyle="solid">
+                <Radio.Button value="semantic_search">向量检索</Radio.Button>
+                <Radio.Button value="full_text_search">全文检索</Radio.Button>
+                <Radio.Button value="hybrid_search">混合检索（推荐）</Radio.Button>
+              </Radio.Group>
             </Form.Item>
             <Space align="start" wrap>
               <Form.Item label="Top K" name="top_k">
@@ -400,24 +404,40 @@ export function CreateKnowledgeWizard({
             <Form.Item name="reranking_provider_name" hidden>
               <Input />
             </Form.Item>
-            <Space align="start" wrap>
-              <Form.Item label="权重策略" name="weight_type">
-                <Select
-                  style={{ width: 180 }}
-                  options={[
-                    { value: 'semantic_first', label: '语义优先' },
-                    { value: 'keyword_first', label: '关键词优先' },
-                    { value: 'customized', label: '自定义' },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item label="语义权重" name="vector_weight">
-                <InputNumber min={0} max={1} step={0.1} />
-              </Form.Item>
-              <Form.Item label="关键词权重" name="keyword_weight">
-                <InputNumber min={0} max={1} step={0.1} />
-              </Form.Item>
-            </Space>
+            {(values?.search_method ?? initialValues.search_method) === 'hybrid_search' && (
+              <Space align="start" wrap>
+                <Form.Item label="语义权重" name="vector_weight">
+                  <InputNumber
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    precision={2}
+                    onChange={(value) => {
+                      const vectorWeight = clampWeight(value)
+                      form.setFieldsValue({
+                        vector_weight: vectorWeight,
+                        keyword_weight: complementaryWeight(vectorWeight),
+                      })
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item label="关键词权重" name="keyword_weight">
+                  <InputNumber
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    precision={2}
+                    onChange={(value) => {
+                      const keywordWeight = clampWeight(value)
+                      form.setFieldsValue({
+                        vector_weight: complementaryWeight(keywordWeight),
+                        keyword_weight: keywordWeight,
+                      })
+                    }}
+                  />
+                </Form.Item>
+              </Space>
+            )}
           </div>
 
           <div hidden={step !== 4}>
