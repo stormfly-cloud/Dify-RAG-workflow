@@ -64,6 +64,13 @@ export class KnowledgeService {
       })
     }
     if (existing?.status === 'provisioning') return this.recoverProvisioning(existing)
+    if (existing?.status === 'deleting') {
+      throw new ConflictException({
+        code: 'knowledge_base_deleting',
+        message: 'The knowledge base is being deleted.',
+      })
+    }
+    if (existing) return this.retryFailedProvisioning(existing, parsed)
 
     const localId = await this.repository.insertProvisioningKnowledgeBase({
       name: parsed.name,
@@ -77,6 +84,10 @@ export class KnowledgeService {
       metadata: parsed.metadata,
     })
 
+    return this.provisionKnowledgeBase(localId, parsed)
+  }
+
+  private async provisionKnowledgeBase(localId: string, parsed: CreateKnowledgeBaseInput) {
     try {
       const dataset = await this.dify.createKnowledgeBase({
         name: parsed.name,
@@ -377,12 +388,43 @@ export class KnowledgeService {
 
   private async recoverProvisioning(existing: KnowledgeBase) {
     if (existing.difyDatasetId) return this.get(existing.id)
-    const response = await this.dify.listKnowledgeBases({ keyword: existing.name, limit: 20 })
-    const match = response.data.find((item) => item.name === existing.name)
+    const match = await this.findDifyKnowledgeBase(existing.name)
     if (!match) throw new ConflictException('Knowledge base provisioning is already in progress')
     const fieldId = await this.ensurePublishMetadataField(match.id)
     await this.repository.markKnowledgeBaseReady(existing.id, match.id, fieldId)
     return this.get(existing.id)
+  }
+
+  private async retryFailedProvisioning(existing: KnowledgeBase, parsed: CreateKnowledgeBaseInput) {
+    const match = await this.findDifyKnowledgeBase(existing.name)
+    if (match) {
+      const fieldId = await this.ensurePublishMetadataField(match.id)
+      await this.repository.markKnowledgeBaseReady(existing.id, match.id, fieldId)
+      return this.get(existing.id)
+    }
+
+    const localId = await this.repository.resetFailedKnowledgeBaseForProvisioning(existing.id, {
+      name: parsed.name,
+      description: parsed.description,
+      indexingTechnique: parsed.indexing_technique,
+      embeddingModel: parsed.embedding_model,
+      embeddingModelProvider: parsed.embedding_model_provider,
+      chunkStructure: parsed.chunk_structure,
+      retrievalModel: parsed.retrieval_model,
+      processRule: parsed.process_rule,
+      metadata: parsed.metadata,
+    })
+    if (!localId) {
+      const current = await this.repository.findKnowledgeBase(existing.id)
+      if (current?.status === 'provisioning') return this.recoverProvisioning(current)
+      throw new ConflictException('Knowledge base provisioning is already in progress')
+    }
+    return this.provisionKnowledgeBase(localId, parsed)
+  }
+
+  private async findDifyKnowledgeBase(name: string) {
+    const response = await this.dify.listKnowledgeBases({ keyword: name, limit: 20 })
+    return response.data.find((item) => item.name === name)
   }
 
   private async ensurePublishMetadataField(datasetId: string) {

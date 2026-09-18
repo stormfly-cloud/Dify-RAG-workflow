@@ -232,6 +232,53 @@ export class KnowledgeRepository {
     )
   }
 
+  async resetFailedKnowledgeBaseForProvisioning(
+    id: string,
+    input: {
+      name: string
+      description: string
+      indexingTechnique: KnowledgeBase['indexingTechnique']
+      embeddingModel?: string
+      embeddingModelProvider?: string
+      chunkStructure: KnowledgeBase['chunkStructure']
+      retrievalModel: KnowledgeBase['retrievalModel']
+      processRule: KnowledgeBase['processRule']
+      metadata: Record<string, string>
+    },
+  ) {
+    const result = await this.database.query<{ id: string }>(
+      `
+      UPDATE knowledge_bases SET
+        name = $2,
+        description = $3,
+        status = 'provisioning',
+        indexing_technique = $4,
+        embedding_model = $5,
+        embedding_model_provider = $6,
+        chunk_structure = $7,
+        retrieval_model = $8,
+        process_rule = $9,
+        metadata = (metadata - 'provisioningError') || $10::jsonb,
+        updated_at = now()
+      WHERE id = $1 AND status = 'failed'
+      RETURNING id
+      `,
+      [
+        id,
+        input.name,
+        input.description,
+        input.indexingTechnique,
+        input.embeddingModel ?? null,
+        input.embeddingModelProvider ?? null,
+        input.chunkStructure,
+        JSON.stringify(input.retrievalModel),
+        JSON.stringify(input.processRule),
+        JSON.stringify(input.metadata),
+      ],
+    )
+    return result.rows[0]?.id ?? null
+  }
+
   async deleteKnowledgeBase(id: string) {
     await this.database.query('DELETE FROM knowledge_bases WHERE id = $1', [id])
   }

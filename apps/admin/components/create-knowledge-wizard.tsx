@@ -161,6 +161,8 @@ export function CreateKnowledgeWizard({
                 weight_type: current.weight_type,
                 vector_setting: {
                   vector_weight: current.vector_weight,
+                  embedding_model_name: current.embedding_model,
+                  embedding_provider_name: current.embedding_model_provider,
                 },
                 keyword_setting: {
                   keyword_weight: current.keyword_weight,
