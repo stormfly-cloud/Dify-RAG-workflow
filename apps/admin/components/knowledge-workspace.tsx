@@ -44,6 +44,7 @@ const phaseOrder = [
   'splitting',
   'indexing',
   'review_required',
+  'published',
 ] as const
 
 const phaseNames: Record<string, string> = {
@@ -145,6 +146,21 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
       tasks[0],
     [tasks],
   )
+
+  const currentStage = useMemo(() => {
+    if (activeTask && ['queued', 'running'].includes(activeTask.status)) {
+      return activeTask.stage
+    }
+    if (!documents.length) return activeTask?.stage ?? 'queued'
+    if (documents.some((document) => document.status === 'failed')) return 'failed'
+    if (documents.some((document) => document.status === 'review_required')) {
+      return 'review_required'
+    }
+    if (documents.every((document) => document.status === 'published')) {
+      return 'published'
+    }
+    return documents[0]!.status
+  }, [activeTask, documents])
 
   useEffect(() => {
     if (!activeTask || !['queued', 'running'].includes(activeTask.status)) return
@@ -303,14 +319,14 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
 
   const phaseProgress = useMemo(() => {
     const currentIndex = phaseOrder.indexOf(
-      (activeTask?.stage ?? 'queued') as (typeof phaseOrder)[number],
+      currentStage as (typeof phaseOrder)[number],
     )
     return phaseOrder.map((phase, index) => ({
       phase,
       done: currentIndex > index,
       active: currentIndex === index,
       percent:
-        activeTask?.stage === phase && activeTask.totalSegments > 0
+        currentStage === phase && activeTask?.totalSegments
           ? Math.round(
               (activeTask.completedSegments / activeTask.totalSegments) * 100,
             )
@@ -318,7 +334,7 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
             ? 100
             : 0,
     }))
-  }, [activeTask])
+  }, [activeTask, currentStage])
 
   return (
     <main className="admin-shell">
@@ -437,7 +453,7 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
                 <div className="metric-cell">
                   <div className="metric-label">当前阶段</div>
                   <div className="metric-value" style={{ fontSize: 18 }}>
-                    {phaseNames[activeTask?.stage ?? 'queued'] ?? '空闲'}
+                    {phaseNames[currentStage] ?? '空闲'}
                   </div>
                 </div>
                 <div className="metric-cell">
