@@ -97,16 +97,23 @@ export function ChatApp() {
       { id: assistantId, role: 'assistant', content: '' },
     ])
 
-    const response = await fetch(`${apiBaseUrl}/chat/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: text,
-        knowledge_base_ids: selectedIds,
-        conversation_id: conversationId,
-        user_id: getUserId(),
-      }),
-    })
+    let response: Response
+    try {
+      response = await fetch(`${apiBaseUrl}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: text,
+          knowledge_base_ids: selectedIds,
+          conversation_id: conversationId,
+          user_id: getUserId(),
+        }),
+      })
+    } catch (reason) {
+      setStreaming(false)
+      setError(reason instanceof Error ? reason.message : '无法连接咨询服务')
+      return
+    }
 
     if (!response.ok || !response.body) {
       setStreaming(false)

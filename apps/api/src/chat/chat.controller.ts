@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res } from '@nestjs/common'
 import type { FastifyReply } from 'fastify'
 import type { ChatRequest } from '@heritage/contracts'
+import { appConfig } from '../config.js'
 import { ChatService } from './chat.service.js'
 
 @Controller('chat')
@@ -20,7 +21,11 @@ export class ChatController {
   @Post('stream')
   async stream(
     @Body() body: ChatRequest,
-    @Req() request: { raw: { on: (event: string, handler: () => void) => void } },
+    @Req()
+    request: {
+      headers: { origin?: string }
+      raw: { on: (event: string, handler: () => void) => void }
+    },
     @Res() reply: FastifyReply,
   ) {
     const controller = new AbortController()
@@ -28,12 +33,19 @@ export class ChatController {
 
     reply.hijack()
     const response = reply.raw
-    response.writeHead(200, {
+    const headers: Record<string, string> = {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-    })
+    }
+    const origin = request.headers.origin
+    if (origin && [appConfig.adminOrigin, appConfig.webOrigin].includes(origin)) {
+      headers['Access-Control-Allow-Origin'] = origin
+      headers['Access-Control-Allow-Credentials'] = 'true'
+      headers.Vary = 'Origin'
+    }
+    response.writeHead(200, headers)
 
     try {
       for await (const chunk of this.chatService.stream(body, controller.signal)) {
