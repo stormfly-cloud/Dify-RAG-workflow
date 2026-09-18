@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - current
+  libc:
+    - current

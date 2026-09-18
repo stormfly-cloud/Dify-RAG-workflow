@@ -1,0 +1,123 @@
+name: heritage
+
+services:
+  app-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${APP_POSTGRES_DB:-heritage}
+      POSTGRES_USER: ${APP_POSTGRES_USER:-heritage}
+      POSTGRES_PASSWORD: ${APP_POSTGRES_PASSWORD:?Set APP_POSTGRES_PASSWORD in .env}
+    ports:
+      - "${APP_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_POSTGRES_USER:-heritage} -d ${APP_POSTGRES_DB:-heritage}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${APP_REDIS_PORT:-6380}:6379"
+    volumes:
+      - app_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app-api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${APP_POSTGRES_USER:-heritage}:${APP_POSTGRES_PASSWORD}@app-postgres:5432/${APP_POSTGRES_DB:-heritage}
+      REDIS_URL: redis://app-redis:6379
+      API_PORT: 3100
+      ENABLE_INGESTION_WORKER: "false"
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      app-redis:
+        condition: service_healthy
+    ports:
+      - "${APP_API_PORT:-3100}:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  app-worker:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${APP_POSTGRES_USER:-heritage}:${APP_POSTGRES_PASSWORD}@app-postgres:5432/${APP_POSTGRES_DB:-heritage}
+      REDIS_URL: redis://app-redis:6379
+      ENABLE_INGESTION_WORKER: "true"
+    depends_on:
+      app-api:
+        condition: service_healthy
+
+  app-admin:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        APP: admin
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3100/api}
+    restart: unless-stopped
+    depends_on:
+      app-api:
+        condition: service_healthy
+    ports:
+      - "${APP_ADMIN_PORT:-3200}:3000"
+
+  app-web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        APP: web
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3100/api}
+    restart: unless-stopped
+    depends_on:
+      app-api:
+        condition: service_healthy
+    ports:
+      - "${APP_WEB_PORT:-3300}:3000"
+
+  app-mobile:
+    build:
+      context: .
+      dockerfile: deploy/mobile.Dockerfile
+      args:
+        TARO_APP_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3100/api}
+    restart: unless-stopped
+    depends_on:
+      app-api:
+        condition: service_healthy
+    ports:
+      - "${APP_MOBILE_PORT:-3301}:80"
+
+volumes:
+  app_postgres_data:
+  app_redis_data:
+
+networks:
+  default:
+    name: ${DIFY_DOCKER_NETWORK:-docker_default}

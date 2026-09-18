@@ -1,0 +1,155 @@
+.page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  background: #eef2ef;
+}
+
+.scopeBar {
+  flex: none;
+  padding: 20px 0;
+  background: #f8faf8;
+  border-bottom: 1px solid #dce3de;
+}
+
+.scopeRow {
+  display: flex;
+  gap: 16px;
+  padding: 0 24px;
+}
+
+.scopeChip {
+  display: flex;
+  min-width: 290px;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid #d7dfd9;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 27px;
+  font-weight: 600;
+
+  &.active {
+    color: #225c42;
+    border-color: #76a68d;
+    background: #eef7f2;
+  }
+}
+
+.scopeCount {
+  margin-top: 8px;
+  color: #718078;
+  font-size: 21px;
+  font-weight: 400;
+}
+
+.messages {
+  min-height: 0;
+  flex: 1;
+  padding: 28px 24px 180px;
+}
+
+.empty {
+  display: flex;
+  min-height: 560px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.emptyMark {
+  display: grid;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 24px;
+  place-items: center;
+  border-radius: 20px;
+  color: #fff;
+  background: #225c42;
+  font-family: serif;
+  font-size: 48px;
+}
+
+.emptyTitle {
+  font-size: 34px;
+  font-weight: 650;
+}
+
+.emptyHint {
+  margin-top: 14px;
+  color: #718078;
+  font-size: 25px;
+}
+
+.message {
+  max-width: 88%;
+  margin-bottom: 24px;
+  padding: 22px 24px;
+  border-radius: 16px;
+  background: #fff;
+  font-size: 28px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+
+  &.user {
+    margin-left: auto;
+    color: #fff;
+    background: #225c42;
+  }
+}
+
+.citation {
+  display: flex;
+  margin-top: 18px;
+  padding: 16px;
+  flex-direction: column;
+  border-left: 5px solid #79a98f;
+  background: #f2f7f4;
+}
+
+.citationTitle {
+  margin-bottom: 8px;
+  color: #244632;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.citationText {
+  color: #63716a;
+  font-size: 23px;
+}
+
+.composer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 18px 24px calc(18px + env(safe-area-inset-bottom));
+  border-top: 1px solid #d8e0da;
+  background: rgba(248, 250, 248, 0.96);
+
+  textarea {
+    min-height: 82px;
+    max-height: 200px;
+    flex: 1;
+    padding: 20px;
+    border: 1px solid #cbd6cf;
+    border-radius: 14px;
+    background: #fff;
+    font-size: 27px;
+  }
+}
+
+.send {
+  width: 140px;
+  margin: 0;
+  color: #fff;
+  border: 0;
+  border-radius: 14px;
+  background: #225c42;
+  font-size: 27px;
+}

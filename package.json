@@ -1,0 +1,29 @@
+{
+  "name": "heritage-rag-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "fastify": "5.11.3"
+    }
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "build:core": "pnpm --filter @heritage/contracts typecheck && pnpm --filter @heritage/dify-client typecheck && pnpm --filter @heritage/api build && pnpm --filter @heritage/admin build && pnpm --filter @heritage/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck:core": "pnpm --filter @heritage/contracts typecheck && pnpm --filter @heritage/dify-client typecheck && pnpm --filter @heritage/api typecheck && pnpm --filter @heritage/admin typecheck && pnpm --filter @heritage/web typecheck",
+    "typecheck:mobile": "pnpm --filter @heritage/mobile typecheck",
+    "test": "pnpm -r --if-present test",
+    "dev:api": "pnpm --filter @heritage/contracts build && pnpm --filter @heritage/dify-client build && pnpm --filter @heritage/api dev",
+    "dev:worker": "pnpm --filter @heritage/contracts build && pnpm --filter @heritage/dify-client build && pnpm --filter @heritage/api dev:worker",
+    "dev:admin": "pnpm --filter @heritage/admin dev",
+    "dev:web": "pnpm --filter @heritage/web dev",
+    "dev:mobile": "pnpm --filter @heritage/mobile dev:weapp"
+  }
+}
