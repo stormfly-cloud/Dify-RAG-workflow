@@ -48,7 +48,7 @@ export type RetrievalModel = {
 }
 
 export type ProcessRule = {
-  mode: 'automatic' | 'custom'
+  mode: 'automatic' | 'custom' | 'hierarchical'
   rules?: {
     pre_processing_rules?: Array<{ id: string; enabled: boolean }>
     segmentation?: {

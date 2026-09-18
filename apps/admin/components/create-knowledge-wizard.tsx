@@ -20,6 +20,7 @@ import { InboxOutlined } from '@ant-design/icons'
 import { useEffect, useMemo, useState } from 'react'
 import type {
   ChunkStructure,
+  CreateKnowledgeBaseInput,
   IndexingTechnique,
   RetrievalModel,
 } from '@heritage/contracts'
@@ -39,6 +40,11 @@ type WizardValues = {
   separator: string
   max_tokens: number
   chunk_overlap: number
+  parent_mode: 'paragraph' | 'full-doc'
+  parent_separator: string
+  parent_max_tokens: number
+  child_separator: string
+  child_max_tokens: number
   remove_extra_spaces: boolean
   remove_urls_emails: boolean
   search_method: RetrievalModel['search_method']
@@ -60,9 +66,14 @@ const initialValues: WizardValues = {
   chunk_structure: 'text_model',
   doc_language: 'Chinese Simplified',
   process_mode: 'automatic',
-  separator: '\n\n',
+  separator: '\\n',
   max_tokens: 500,
   chunk_overlap: 50,
+  parent_mode: 'paragraph',
+  parent_separator: '\\n\\n',
+  parent_max_tokens: 1024,
+  child_separator: '\\n',
+  child_max_tokens: 512,
   remove_extra_spaces: true,
   remove_urls_emails: false,
   search_method: 'hybrid_search',
@@ -82,6 +93,23 @@ function clampWeight(value: number | null) {
 
 function complementaryWeight(value: number) {
   return Math.round((1 - value) * 100) / 100
+}
+
+function unescapeSeparator(value: string | undefined) {
+  if (!value) return ''
+  const escapes: Record<string, string> = {
+    '0': '\0',
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t',
+    v: '\v',
+    '\\': '\\',
+    "'": "'",
+    '"': '"',
+  }
+  return value.replace(/\\([\\'"0bfnrtv])/g, (_, code: string) => escapes[code] ?? code)
 }
 
 export function CreateKnowledgeWizard({
@@ -106,6 +134,7 @@ export function CreateKnowledgeWizard({
   const useRerankModel = isHybridSearch
     ? currentValues.reranking_mode === 'reranking_model'
     : currentValues.reranking_enable
+  const isHierarchicalChunking = currentValues.chunk_structure === 'hierarchical_model'
 
   useEffect(() => {
     if (!open) return
@@ -120,6 +149,53 @@ export function CreateKnowledgeWizard({
 
   const payload = useMemo(() => {
     const current = currentValues
+    const preProcessingRules = [
+      {
+        id: 'remove_extra_spaces' as const,
+        enabled: current.remove_extra_spaces,
+      },
+      {
+        id: 'remove_urls_emails' as const,
+        enabled: current.remove_urls_emails,
+      },
+    ]
+    const processRule: CreateKnowledgeBaseInput['process_rule'] =
+      current.chunk_structure === 'hierarchical_model'
+        ? {
+            mode: 'hierarchical',
+            rules: {
+              pre_processing_rules: preProcessingRules,
+              segmentation: {
+                separator: unescapeSeparator(
+                  current.parent_separator ?? initialValues.parent_separator,
+                ),
+                max_tokens: current.parent_max_tokens,
+              },
+              parent_mode: current.parent_mode,
+              subchunk_segmentation: {
+                separator: unescapeSeparator(
+                  current.child_separator ?? initialValues.child_separator,
+                ),
+                max_tokens: current.child_max_tokens,
+              },
+            },
+          }
+        : {
+            mode: current.process_mode,
+            rules:
+              current.process_mode === 'custom'
+                ? {
+                    pre_processing_rules: preProcessingRules,
+                    segmentation: {
+                      separator: unescapeSeparator(
+                        current.separator ?? initialValues.separator,
+                      ),
+                      max_tokens: current.max_tokens,
+                      chunk_overlap: current.chunk_overlap,
+                    },
+                  }
+                : undefined,
+          }
     return {
       name: current.name,
       description: current.description,
@@ -128,29 +204,7 @@ export function CreateKnowledgeWizard({
       embedding_model_provider: current.embedding_model_provider,
       chunk_structure: current.chunk_structure,
       doc_language: current.doc_language,
-      process_rule: {
-        mode: current.process_mode,
-        rules:
-          current.process_mode === 'custom'
-            ? {
-                pre_processing_rules: [
-                  {
-                    id: 'remove_extra_spaces',
-                    enabled: current.remove_extra_spaces,
-                  },
-                  {
-                    id: 'remove_urls_emails',
-                    enabled: current.remove_urls_emails,
-                  },
-                ],
-                segmentation: {
-                  separator: current.separator,
-                  max_tokens: current.max_tokens,
-                  chunk_overlap: current.chunk_overlap,
-                },
-              }
-            : undefined,
-      },
+      process_rule: processRule,
       retrieval_model: {
         search_method: current.search_method,
         reranking_enable: useRerankModel,
@@ -196,10 +250,26 @@ export function CreateKnowledgeWizard({
     const fields: Array<keyof WizardValues>[] = [
       ['name'],
       ['indexing_technique', 'embedding_model', 'embedding_model_provider'],
-      ['chunk_structure', 'process_mode', 'separator', 'max_tokens'],
+      ['chunk_structure'],
       ['search_method', 'top_k'],
       [],
     ]
+    if (step === 2) {
+      if (currentValues.chunk_structure === 'hierarchical_model') {
+        fields[2]!.push(
+          'parent_mode',
+          'parent_separator',
+          'parent_max_tokens',
+          'child_separator',
+          'child_max_tokens',
+        )
+      } else {
+        fields[2]!.push('process_mode')
+        if (currentValues.process_mode === 'custom') {
+          fields[2]!.push('separator', 'max_tokens', 'chunk_overlap')
+        }
+      }
+    }
     if (useRerankModel) fields[3]!.push('reranking_model_name')
     await form.validateFields(fields[step])
     setStep((current) => Math.min(4, current + 1))
@@ -290,9 +360,22 @@ export function CreateKnowledgeWizard({
 
           <div hidden={step !== 1}>
             <Form.Item label="索引方式" name="indexing_technique">
-              <Radio.Group optionType="button" buttonStyle="solid">
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                onChange={(event) => {
+                  if (event.target.value === 'economy') {
+                    form.setFieldValue('chunk_structure', 'text_model')
+                  }
+                }}
+              >
                 <Radio.Button value="high_quality">高质量向量检索</Radio.Button>
-                <Radio.Button value="economy">经济关键词检索</Radio.Button>
+                <Radio.Button
+                  value="economy"
+                  disabled={currentValues.chunk_structure !== 'text_model'}
+                >
+                  经济关键词检索
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
             <Form.Item
@@ -335,38 +418,146 @@ export function CreateKnowledgeWizard({
           </div>
 
           <div hidden={step !== 2}>
-            <Form.Item label="分段结构" name="chunk_structure">
-              <Radio.Group optionType="button">
+            <Form.Item
+              label="分段结构"
+              name="chunk_structure"
+              rules={[{ required: true }]}
+            >
+              <Radio.Group
+                optionType="button"
+                onChange={(event) => {
+                  if (event.target.value !== 'text_model') {
+                    form.setFieldValue('indexing_technique', 'high_quality')
+                  }
+                }}
+              >
                 <Radio.Button value="text_model">通用文本</Radio.Button>
-                <Radio.Button value="qa_model">问答对</Radio.Button>
-                <Radio.Button value="hierarchical_model">父子分段</Radio.Button>
+                <Radio.Button
+                  value="qa_model"
+                  disabled={currentValues.indexing_technique === 'economy'}
+                >
+                  问答对
+                </Radio.Button>
+                <Radio.Button
+                  value="hierarchical_model"
+                  disabled={currentValues.indexing_technique === 'economy'}
+                >
+                  父子分段
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
-            <Form.Item label="处理模式" name="process_mode">
-              <Radio.Group optionType="button">
-                <Radio.Button value="automatic">自动</Radio.Button>
-                <Radio.Button value="custom">自定义</Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-            <Space align="start" wrap>
-              <Form.Item label="分段标识符" name="separator">
-                <Input style={{ width: 220 }} />
-              </Form.Item>
-              <Form.Item label="最大 Token" name="max_tokens">
-                <InputNumber min={1} max={4000} />
-              </Form.Item>
-              <Form.Item label="重叠 Token" name="chunk_overlap">
-                <InputNumber min={0} max={1000} />
-              </Form.Item>
-            </Space>
-            <Space size="large">
-              <Form.Item label="移除多余空格" name="remove_extra_spaces" valuePropName="checked">
-                <Switch />
-              </Form.Item>
-              <Form.Item label="移除 URL 与邮箱" name="remove_urls_emails" valuePropName="checked">
-                <Switch />
-              </Form.Item>
-            </Space>
+            {isHierarchicalChunking ? (
+              <div className="segmentation-settings-stack">
+                <section className="segmentation-settings-section">
+                  <div className="segmentation-settings-section-title">父块（用于上下文）</div>
+                  <Form.Item label="父块合并模式" name="parent_mode">
+                    <Radio.Group optionType="button">
+                      <Radio.Button value="paragraph">按段落</Radio.Button>
+                      <Radio.Button value="full-doc">完整文档</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+                  {currentValues.parent_mode === 'paragraph' && (
+                    <Space align="start" wrap>
+                      <Form.Item label="父块分隔符" name="parent_separator">
+                        <Input style={{ width: 220 }} />
+                      </Form.Item>
+                      <Form.Item label="父块最大 Characters" name="parent_max_tokens">
+                        <InputNumber min={1} max={4000} />
+                      </Form.Item>
+                    </Space>
+                  )}
+                </section>
+                <section className="segmentation-settings-section">
+                  <div className="segmentation-settings-section-title">子块（用于检索）</div>
+                  <Space align="start" wrap>
+                    <Form.Item label="子块分隔符" name="child_separator">
+                      <Input style={{ width: 220 }} />
+                    </Form.Item>
+                    <Form.Item label="子块最大 Characters" name="child_max_tokens">
+                      <InputNumber min={1} max={4000} />
+                    </Form.Item>
+                  </Space>
+                </section>
+                <section className="segmentation-settings-section">
+                  <div className="segmentation-settings-section-title">处理规则</div>
+                  <Space size="large">
+                    <Form.Item
+                      label="移除多余空格"
+                      name="remove_extra_spaces"
+                      valuePropName="checked"
+                    >
+                      <Switch />
+                    </Form.Item>
+                    <Form.Item
+                      label="移除 URL 与邮箱"
+                      name="remove_urls_emails"
+                      valuePropName="checked"
+                    >
+                      <Switch />
+                    </Form.Item>
+                  </Space>
+                </section>
+              </div>
+            ) : (
+              <div className="segmentation-settings-stack">
+                <section className="segmentation-settings-section">
+                  <div className="segmentation-settings-section-title">处理模式</div>
+                  <Form.Item name="process_mode" noStyle>
+                    <Radio.Group optionType="button">
+                      <Radio.Button value="automatic">自动</Radio.Button>
+                      <Radio.Button value="custom">自定义</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+                </section>
+                {currentValues.process_mode === 'custom' && (
+                  <section className="segmentation-settings-section">
+                    <div className="segmentation-settings-section-title">自定义分段</div>
+                    <Space align="start" wrap>
+                      <Form.Item label="分段标识符" name="separator">
+                        <Input style={{ width: 220 }} />
+                      </Form.Item>
+                      <Form.Item label="最大 Characters" name="max_tokens">
+                        <InputNumber min={1} max={4000} />
+                      </Form.Item>
+                      <Form.Item
+                        label="重叠 Characters"
+                        name="chunk_overlap"
+                        rules={[
+                          {
+                            validator: async (_, value: number) => {
+                              if (
+                                typeof value === 'number' &&
+                                value > form.getFieldValue('max_tokens')
+                              ) {
+                                throw new Error('重叠 Characters 不能大于最大 Characters')
+                              }
+                            },
+                          },
+                        ]}
+                      >
+                        <InputNumber min={0} max={1000} />
+                      </Form.Item>
+                    </Space>
+                    <Space size="large">
+                      <Form.Item
+                        label="移除多余空格"
+                        name="remove_extra_spaces"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item
+                        label="移除 URL 与邮箱"
+                        name="remove_urls_emails"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                    </Space>
+                  </section>
+                )}
+              </div>
+            )}
           </div>
 
           <div hidden={step !== 3}>

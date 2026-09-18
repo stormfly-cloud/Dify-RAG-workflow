@@ -45,7 +45,7 @@ export const retrievalModelSchema = z.object({
 })
 
 export const processRuleSchema = z.object({
-  mode: z.enum(['automatic', 'custom']),
+  mode: z.enum(['automatic', 'custom', 'hierarchical']),
   rules: z
     .object({
       pre_processing_rules: z.array(
