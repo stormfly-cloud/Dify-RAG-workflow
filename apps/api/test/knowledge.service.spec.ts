@@ -11,7 +11,7 @@ const input: CreateKnowledgeBaseInput = {
   doc_language: 'Chinese Simplified',
   process_rule: { mode: 'automatic' },
   retrieval_model: {
-    search_method: 'semantic_search',
+    search_method: 'keyword_search',
     reranking_enable: false,
     top_k: 5,
     score_threshold_enabled: false,
@@ -31,6 +31,7 @@ function knowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeBase {
     embeddingModel: null,
     embeddingModelProvider: null,
     chunkStructure: input.chunk_structure,
+    docLanguage: input.doc_language,
     retrievalModel: input.retrieval_model,
     processRule: input.process_rule,
     metadata: { provisioningError: 'previous failure' },
@@ -129,5 +130,20 @@ describe('KnowledgeService.create', () => {
 
     await expect(service.create(input)).rejects.toBeInstanceOf(ConflictException)
     expect(repository.insertProvisioningKnowledgeBase).not.toHaveBeenCalled()
+  })
+
+  it('handles a concurrent insert conflict without leaking a database error', async () => {
+    const ready = knowledgeBase({ status: 'ready', difyDatasetId: 'dataset-ready' })
+    const { service, repository } = setup(ready)
+    repository.findKnowledgeBaseByName
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(ready)
+    repository.insertProvisioningKnowledgeBase.mockResolvedValue(null)
+
+    await expect(service.create(input)).rejects.toMatchObject({
+      response: {
+        code: 'knowledge_base_name_exists',
+      },
+    })
   })
 })

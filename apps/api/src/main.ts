@@ -10,6 +10,7 @@ import multipart from '@fastify/multipart'
 import { AppModule } from './app.module.js'
 import { appConfig } from './config.js'
 import { DifyErrorFilter } from './common/dify-error.filter.js'
+import { ZodValidationFilter } from './common/zod-validation.filter.js'
 
 async function bootstrap() {
   const adapter = new FastifyAdapter({ trustProxy: true, bodyLimit: 20 * 1024 * 1024 })
@@ -31,7 +32,7 @@ async function bootstrap() {
   })
 
   app.setGlobalPrefix('api')
-  app.useGlobalFilters(new DifyErrorFilter())
+  app.useGlobalFilters(new ZodValidationFilter(), new DifyErrorFilter())
   await app.listen(appConfig.port, '0.0.0.0')
   Logger.log(`API listening on http://0.0.0.0:${appConfig.port}`, 'Bootstrap')
 }

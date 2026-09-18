@@ -57,20 +57,7 @@ export class KnowledgeService {
     }
 
     const existing = await this.repository.findKnowledgeBaseByName(parsed.name)
-    if (existing?.status === 'ready') {
-      throw new ConflictException({
-        code: 'knowledge_base_name_exists',
-        message: 'A knowledge base with this name already exists.',
-      })
-    }
-    if (existing?.status === 'provisioning') return this.recoverProvisioning(existing)
-    if (existing?.status === 'deleting') {
-      throw new ConflictException({
-        code: 'knowledge_base_deleting',
-        message: 'The knowledge base is being deleted.',
-      })
-    }
-    if (existing) return this.retryFailedProvisioning(existing, parsed)
+    if (existing) return this.handleExistingKnowledgeBase(existing, parsed)
 
     const localId = await this.repository.insertProvisioningKnowledgeBase({
       name: parsed.name,
@@ -79,12 +66,44 @@ export class KnowledgeService {
       embeddingModel: parsed.embedding_model,
       embeddingModelProvider: parsed.embedding_model_provider,
       chunkStructure: parsed.chunk_structure,
+      docLanguage: parsed.doc_language,
       retrievalModel: parsed.retrieval_model,
       processRule: parsed.process_rule,
       metadata: parsed.metadata,
     })
 
+    if (!localId) {
+      const concurrent = await this.repository.findKnowledgeBaseByName(parsed.name)
+      if (!concurrent) {
+        throw new ConflictException({
+          code: 'knowledge_base_create_conflict',
+          message: 'A concurrent knowledge base creation is already in progress.',
+        })
+      }
+      return this.handleExistingKnowledgeBase(concurrent, parsed)
+    }
+
     return this.provisionKnowledgeBase(localId, parsed)
+  }
+
+  private async handleExistingKnowledgeBase(
+    existing: KnowledgeBase,
+    parsed: CreateKnowledgeBaseInput,
+  ) {
+    if (existing.status === 'ready') {
+      throw new ConflictException({
+        code: 'knowledge_base_name_exists',
+        message: 'A knowledge base with this name already exists.',
+      })
+    }
+    if (existing.status === 'provisioning') return this.recoverProvisioning(existing)
+    if (existing.status === 'deleting') {
+      throw new ConflictException({
+        code: 'knowledge_base_deleting',
+        message: 'The knowledge base is being deleted.',
+      })
+    }
+    return this.retryFailedProvisioning(existing, parsed)
   }
 
   private async provisionKnowledgeBase(localId: string, parsed: CreateKnowledgeBaseInput) {
@@ -133,6 +152,7 @@ export class KnowledgeService {
         retrieval_model = COALESCE($8, retrieval_model),
         process_rule = COALESCE($9, process_rule),
         metadata = COALESCE($10, metadata),
+        doc_language = COALESCE($11, doc_language),
         updated_at = now()
       WHERE id = $1
       `,
@@ -147,6 +167,7 @@ export class KnowledgeService {
         parsed.retrieval_model ? JSON.stringify(parsed.retrieval_model) : null,
         parsed.process_rule ? JSON.stringify(parsed.process_rule) : null,
         parsed.metadata ? JSON.stringify(parsed.metadata) : null,
+        parsed.doc_language ?? null,
       ],
     )
     return this.get(id)
@@ -410,6 +431,7 @@ export class KnowledgeService {
       embeddingModel: parsed.embedding_model,
       embeddingModelProvider: parsed.embedding_model_provider,
       chunkStructure: parsed.chunk_structure,
+      docLanguage: parsed.doc_language,
       retrievalModel: parsed.retrieval_model,
       processRule: parsed.process_rule,
       metadata: parsed.metadata,
@@ -505,7 +527,7 @@ export class KnowledgeService {
     return {
       indexing_technique: knowledgeBase.indexingTechnique,
       doc_form: knowledgeBase.chunkStructure,
-      doc_language: 'Chinese Simplified',
+      doc_language: knowledgeBase.docLanguage,
       process_rule: knowledgeBase.processRule,
       retrieval_model: this.withPublishFilter(knowledgeBase.retrievalModel, 'published'),
       embedding_model: knowledgeBase.embeddingModel ?? undefined,

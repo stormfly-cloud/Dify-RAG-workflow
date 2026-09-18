@@ -95,6 +95,20 @@ function complementaryWeight(value: number) {
   return Math.round((1 - value) * 100) / 100
 }
 
+function getModelKey(model: Pick<ModelOption, 'provider' | 'model'>) {
+  return `${model.provider}::${model.model}`
+}
+
+function getModelName(value: string | undefined) {
+  if (!value) return undefined
+  const separatorIndex = value.indexOf('::')
+  return separatorIndex === -1 ? value : value.slice(separatorIndex + 2)
+}
+
+function findModelByKey(models: ModelOption[], key: string) {
+  return models.find((model) => getModelKey(model) === key)
+}
+
 function unescapeSeparator(value: string | undefined) {
   if (!value) return ''
   const escapes: Record<string, string> = {
@@ -128,12 +142,16 @@ export function CreateKnowledgeWizard({
   const [files, setFiles] = useState<UploadFile[]>([])
   const [embeddingModels, setEmbeddingModels] = useState<ModelOption[]>([])
   const [rerankModels, setRerankModels] = useState<ModelOption[]>([])
+  const [modelLoadError, setModelLoadError] = useState('')
   const values = Form.useWatch([], form)
   const currentValues = values ?? initialValues
+  const isEconomy = currentValues.indexing_technique === 'economy'
   const isHybridSearch = currentValues.search_method === 'hybrid_search'
-  const useRerankModel = isHybridSearch
-    ? currentValues.reranking_mode === 'reranking_model'
-    : currentValues.reranking_enable
+  const useRerankModel =
+    !isEconomy &&
+    (isHybridSearch
+      ? currentValues.reranking_mode === 'reranking_model'
+      : currentValues.reranking_enable)
   const isHierarchicalChunking = currentValues.chunk_structure === 'hierarchical_model'
 
   useEffect(() => {
@@ -141,10 +159,17 @@ export function CreateKnowledgeWizard({
     void Promise.all([
       adminApi.listModels('text-embedding'),
       adminApi.listModels('rerank'),
-    ]).then(([embedding, rerank]) => {
-      setEmbeddingModels(embedding)
-      setRerankModels(rerank)
-    })
+    ])
+      .then(([embedding, rerank]) => {
+        setEmbeddingModels(embedding)
+        setRerankModels(rerank)
+        setModelLoadError('')
+      })
+      .catch((error: unknown) => {
+        setEmbeddingModels([])
+        setRerankModels([])
+        setModelLoadError(error instanceof Error ? error.message : '模型列表加载失败')
+      })
   }, [open])
 
   const payload = useMemo(() => {
@@ -200,40 +225,43 @@ export function CreateKnowledgeWizard({
       name: current.name,
       description: current.description,
       indexing_technique: current.indexing_technique,
-      embedding_model: current.embedding_model,
+      embedding_model: getModelName(current.embedding_model),
       embedding_model_provider: current.embedding_model_provider,
       chunk_structure: current.chunk_structure,
       doc_language: current.doc_language,
       process_rule: processRule,
       retrieval_model: {
-        search_method: current.search_method,
-        reranking_enable: useRerankModel,
-        reranking_mode: isHybridSearch
+        search_method: isEconomy ? 'keyword_search' : current.search_method,
+        reranking_enable: isEconomy ? false : useRerankModel,
+        reranking_mode: isEconomy
+          ? null
+          : isHybridSearch
           ? current.reranking_mode
           : current.reranking_enable
             ? 'reranking_model'
             : null,
         reranking_model:
+          !isEconomy &&
           useRerankModel &&
           current.reranking_provider_name &&
           current.reranking_model_name
             ? {
                 reranking_provider_name: current.reranking_provider_name,
-                reranking_model_name: current.reranking_model_name,
+                reranking_model_name: getModelName(current.reranking_model_name),
               }
             : undefined,
         top_k: current.top_k,
-        score_threshold_enabled: current.score_threshold_enabled,
-        score_threshold: current.score_threshold_enabled
+        score_threshold_enabled: isEconomy ? false : current.score_threshold_enabled,
+        score_threshold: !isEconomy && current.score_threshold_enabled
           ? current.score_threshold
           : null,
         weights:
-          isHybridSearch && current.reranking_mode === 'weighted_score'
+          !isEconomy && isHybridSearch && current.reranking_mode === 'weighted_score'
             ? {
                 weight_type: 'customized',
                 vector_setting: {
                   vector_weight: current.vector_weight,
-                  embedding_model_name: current.embedding_model,
+                  embedding_model_name: getModelName(current.embedding_model),
                   embedding_provider_name: current.embedding_model_provider,
                 },
                 keyword_setting: {
@@ -280,17 +308,32 @@ export function CreateKnowledgeWizard({
     setSubmitting(true)
     try {
       const created = await adminApi.createKnowledgeBase(payload)
+      const failedUploads: string[] = []
       for (const file of files) {
         if (file.originFileObj) {
-          await adminApi.uploadFile(created.id, file.originFileObj)
+          try {
+            await adminApi.uploadFile(created.id, file.originFileObj)
+          } catch (error) {
+            failedUploads.push(
+              `${file.name}: ${error instanceof Error ? error.message : '上传失败'}`,
+            )
+          }
         }
       }
-      message.success('知识库已创建，文档已进入处理队列')
       form.resetFields()
       setFiles([])
       setStep(0)
       onCreated(created.id)
       onClose()
+      if (failedUploads.length) {
+        message.warning(
+          `知识库已创建，${failedUploads.length} 个文档上传失败：${failedUploads.join('；')}`,
+        )
+      } else if (files.length) {
+        message.success('知识库已创建，文档已进入处理队列')
+      } else {
+        message.success('知识库已创建')
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '创建失败')
     } finally {
@@ -359,13 +402,30 @@ export function CreateKnowledgeWizard({
           </div>
 
           <div hidden={step !== 1}>
+            {modelLoadError && (
+              <Alert
+                type="error"
+                showIcon
+                message={modelLoadError}
+                style={{ marginBottom: 16 }}
+              />
+            )}
             <Form.Item label="索引方式" name="indexing_technique">
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
                 onChange={(event) => {
                   if (event.target.value === 'economy') {
-                    form.setFieldValue('chunk_structure', 'text_model')
+                    form.setFieldsValue({
+                      chunk_structure: 'text_model',
+                      embedding_model: undefined,
+                      embedding_model_provider: undefined,
+                      search_method: 'keyword_search',
+                      reranking_enable: false,
+                      score_threshold_enabled: false,
+                    })
+                  } else if (currentValues.search_method === 'keyword_search') {
+                    form.setFieldValue('search_method', 'hybrid_search')
                   }
                 }}
               >
@@ -398,15 +458,15 @@ export function CreateKnowledgeWizard({
                     disabled={getFieldValue('indexing_technique') === 'economy'}
                     placeholder="从 Dify 已配置模型中选择"
                     options={embeddingModels.map((model) => ({
-                      value: model.model,
+                      value: getModelKey(model),
                       label: `${model.providerLabel} / ${model.modelLabel}`,
                     }))}
                     onChange={(value) => {
-                      const model = embeddingModels.find((item) => item.model === value)
-                      form.setFieldValue(
-                        'embedding_model_provider',
-                        model?.provider,
-                      )
+                      const model = findModelByKey(embeddingModels, value)
+                      form.setFieldsValue({
+                        embedding_model: value,
+                        embedding_model_provider: model?.provider,
+                      })
                     }}
                   />
                 </Form.Item>
@@ -565,19 +625,30 @@ export function CreateKnowledgeWizard({
               <section className="retrieval-settings-section">
                 <div className="retrieval-settings-section-title">检索方式</div>
                 <Form.Item name="search_method" noStyle>
-                  <Radio.Group
-                    className="retrieval-settings-choice-group"
-                    optionType="button"
-                    buttonStyle="solid"
-                  >
-                    <Radio.Button value="semantic_search">向量检索</Radio.Button>
-                    <Radio.Button value="full_text_search">全文检索</Radio.Button>
-                    <Radio.Button value="hybrid_search">混合检索（推荐）</Radio.Button>
-                  </Radio.Group>
+                  {isEconomy ? (
+                    <Radio.Group
+                      className="retrieval-settings-choice-group"
+                      optionType="button"
+                      buttonStyle="solid"
+                    >
+                      <Radio.Button value="keyword_search">关键词检索</Radio.Button>
+                    </Radio.Group>
+                  ) : (
+                    <Radio.Group
+                      className="retrieval-settings-choice-group"
+                      optionType="button"
+                      buttonStyle="solid"
+                    >
+                      <Radio.Button value="semantic_search">向量检索</Radio.Button>
+                      <Radio.Button value="full_text_search">全文检索</Radio.Button>
+                      <Radio.Button value="hybrid_search">混合检索（推荐）</Radio.Button>
+                    </Radio.Group>
+                  )}
                 </Form.Item>
               </section>
 
-              <section className="retrieval-settings-section">
+              {!isEconomy && (
+                <section className="retrieval-settings-section">
                 <div className="retrieval-settings-section-title">
                   {isHybridSearch ? '排序策略' : '重排设置'}
                 </div>
@@ -619,12 +690,15 @@ export function CreateKnowledgeWizard({
                       allowClear
                       placeholder="请选择重排模型"
                       options={rerankModels.map((model) => ({
-                        value: model.model,
+                        value: getModelKey(model),
                         label: `${model.providerLabel} / ${model.modelLabel}`,
                       }))}
                       onChange={(value) => {
-                        const model = rerankModels.find((item) => item.model === value)
-                        form.setFieldValue('reranking_provider_name', model?.provider)
+                        const model = findModelByKey(rerankModels, value)
+                        form.setFieldsValue({
+                          reranking_model_name: value,
+                          reranking_provider_name: model?.provider,
+                        })
                       }}
                     />
                   </Form.Item>
@@ -666,7 +740,8 @@ export function CreateKnowledgeWizard({
                     </Form.Item>
                   </Space>
                 )}
-              </section>
+                </section>
+              )}
 
               <section className="retrieval-settings-section retrieval-settings-results">
                 <div className="retrieval-settings-section-title">结果参数</div>
@@ -674,7 +749,8 @@ export function CreateKnowledgeWizard({
                   <Form.Item label="Top K" name="top_k">
                     <InputNumber min={1} max={20} />
                   </Form.Item>
-                  <Form.Item label="Score 阈值">
+                  {!isEconomy && (
+                    <Form.Item label="Score 阈值">
                     <div className="score-threshold-control">
                       <Form.Item
                         name="score_threshold_enabled"
@@ -692,7 +768,8 @@ export function CreateKnowledgeWizard({
                         />
                       </Form.Item>
                     </div>
-                  </Form.Item>
+                    </Form.Item>
+                  )}
                 </div>
               </section>
             </div>

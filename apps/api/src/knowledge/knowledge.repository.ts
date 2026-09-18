@@ -25,6 +25,7 @@ type KnowledgeBaseRow = {
   embedding_model: string | null
   embedding_model_provider: string | null
   chunk_structure: KnowledgeBase['chunkStructure']
+  doc_language: string
   retrieval_model: KnowledgeBase['retrievalModel']
   process_rule: KnowledgeBase['processRule']
   metadata: Record<string, string>
@@ -79,6 +80,7 @@ function mapKnowledgeBase(row: KnowledgeBaseRow): KnowledgeBase {
     embeddingModel: row.embedding_model,
     embeddingModelProvider: row.embedding_model_provider,
     chunkStructure: row.chunk_structure,
+    docLanguage: row.doc_language,
     retrievalModel: row.retrieval_model,
     processRule: row.process_rule,
     metadata: row.metadata,
@@ -186,6 +188,7 @@ export class KnowledgeRepository {
     embeddingModel?: string
     embeddingModelProvider?: string
     chunkStructure: KnowledgeBase['chunkStructure']
+    docLanguage: string
     retrievalModel: KnowledgeBase['retrievalModel']
     processRule: KnowledgeBase['processRule']
     metadata: Record<string, string>
@@ -194,9 +197,11 @@ export class KnowledgeRepository {
       `
       INSERT INTO knowledge_bases (
         name, description, status, indexing_technique, embedding_model,
-        embedding_model_provider, chunk_structure, retrieval_model, process_rule, metadata
+        embedding_model_provider, chunk_structure, doc_language, retrieval_model,
+        process_rule, metadata
       )
-      VALUES ($1, $2, 'provisioning', $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, 'provisioning', $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (name) DO NOTHING
       RETURNING id
       `,
       [
@@ -206,12 +211,13 @@ export class KnowledgeRepository {
         input.embeddingModel ?? null,
         input.embeddingModelProvider ?? null,
         input.chunkStructure,
+        input.docLanguage,
         JSON.stringify(input.retrievalModel),
         JSON.stringify(input.processRule),
         JSON.stringify(input.metadata),
       ],
     )
-    return result.rows[0]!.id
+    return result.rows[0]?.id ?? null
   }
 
   async markKnowledgeBaseReady(id: string, difyDatasetId: string, publishFieldId: string) {
@@ -241,6 +247,7 @@ export class KnowledgeRepository {
       embeddingModel?: string
       embeddingModelProvider?: string
       chunkStructure: KnowledgeBase['chunkStructure']
+      docLanguage: string
       retrievalModel: KnowledgeBase['retrievalModel']
       processRule: KnowledgeBase['processRule']
       metadata: Record<string, string>
@@ -256,9 +263,10 @@ export class KnowledgeRepository {
         embedding_model = $5,
         embedding_model_provider = $6,
         chunk_structure = $7,
-        retrieval_model = $8,
-        process_rule = $9,
-        metadata = (metadata - 'provisioningError') || $10::jsonb,
+        doc_language = $8,
+        retrieval_model = $9,
+        process_rule = $10,
+        metadata = (metadata - 'provisioningError') || $11::jsonb,
         updated_at = now()
       WHERE id = $1 AND status = 'failed'
       RETURNING id
@@ -271,6 +279,7 @@ export class KnowledgeRepository {
         input.embeddingModel ?? null,
         input.embeddingModelProvider ?? null,
         input.chunkStructure,
+        input.docLanguage,
         JSON.stringify(input.retrievalModel),
         JSON.stringify(input.processRule),
         JSON.stringify(input.metadata),
