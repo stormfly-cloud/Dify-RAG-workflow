@@ -168,6 +168,75 @@ body {
   font-size: 12px;
 }
 
+.retrieval-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.retrieval-settings-section {
+  padding: 16px;
+  border: 1px solid #e1e5ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.retrieval-settings-results {
+  background: #fafbfc;
+}
+
+.retrieval-settings-section-title {
+  margin-bottom: 12px;
+  color: #101828;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.retrieval-settings-section-description {
+  margin-top: -6px;
+  margin-bottom: 12px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.retrieval-settings-choice-group {
+  display: flex;
+  width: 100%;
+}
+
+.retrieval-settings-choice-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+.retrieval-settings-followup {
+  margin-top: 16px;
+}
+
+.retrieval-settings-results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.retrieval-settings-results-grid .ant-form-item {
+  margin-bottom: 0;
+}
+
+.retrieval-settings-results-grid .ant-input-number {
+  width: 100%;
+}
+
+.score-threshold-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.score-threshold-control .ant-input-number {
+  flex: 1;
+}
+
 .task-timeline {
   max-height: 280px;
   overflow: auto;
@@ -210,6 +279,10 @@ body {
   }
 
   .wizard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .retrieval-settings-results-grid {
     grid-template-columns: 1fr;
   }
 }

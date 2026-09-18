@@ -45,6 +45,7 @@ type WizardValues = {
   top_k: number
   score_threshold_enabled: boolean
   score_threshold: number
+  reranking_mode: 'weighted_score' | 'reranking_model'
   reranking_enable: boolean
   reranking_provider_name?: string
   reranking_model_name?: string
@@ -68,6 +69,7 @@ const initialValues: WizardValues = {
   top_k: 4,
   score_threshold_enabled: false,
   score_threshold: 0.5,
+  reranking_mode: 'weighted_score',
   reranking_enable: false,
   vector_weight: 0.7,
   keyword_weight: 0.3,
@@ -99,6 +101,11 @@ export function CreateKnowledgeWizard({
   const [embeddingModels, setEmbeddingModels] = useState<ModelOption[]>([])
   const [rerankModels, setRerankModels] = useState<ModelOption[]>([])
   const values = Form.useWatch([], form)
+  const currentValues = values ?? initialValues
+  const isHybridSearch = currentValues.search_method === 'hybrid_search'
+  const useRerankModel = isHybridSearch
+    ? currentValues.reranking_mode === 'reranking_model'
+    : currentValues.reranking_enable
 
   useEffect(() => {
     if (!open) return
@@ -112,7 +119,7 @@ export function CreateKnowledgeWizard({
   }, [open])
 
   const payload = useMemo(() => {
-    const current = values ?? initialValues
+    const current = currentValues
     return {
       name: current.name,
       description: current.description,
@@ -146,10 +153,14 @@ export function CreateKnowledgeWizard({
       },
       retrieval_model: {
         search_method: current.search_method,
-        reranking_enable: current.reranking_enable,
-        reranking_mode: current.reranking_enable ? 'reranking_model' : null,
+        reranking_enable: useRerankModel,
+        reranking_mode: isHybridSearch
+          ? current.reranking_mode
+          : current.reranking_enable
+            ? 'reranking_model'
+            : null,
         reranking_model:
-          current.reranking_enable &&
+          useRerankModel &&
           current.reranking_provider_name &&
           current.reranking_model_name
             ? {
@@ -163,7 +174,7 @@ export function CreateKnowledgeWizard({
           ? current.score_threshold
           : null,
         weights:
-          current.search_method === 'hybrid_search'
+          isHybridSearch && current.reranking_mode === 'weighted_score'
             ? {
                 weight_type: 'customized',
                 vector_setting: {
@@ -179,7 +190,7 @@ export function CreateKnowledgeWizard({
       },
       metadata: {},
     }
-  }, [values])
+  }, [currentValues])
 
   const next = async () => {
     const fields: Array<keyof WizardValues>[] = [
@@ -189,6 +200,7 @@ export function CreateKnowledgeWizard({
       ['search_method', 'top_k'],
       [],
     ]
+    if (useRerankModel) fields[3]!.push('reranking_model_name')
     await form.validateFields(fields[step])
     setStep((current) => Math.min(4, current + 1))
   }
@@ -358,86 +370,141 @@ export function CreateKnowledgeWizard({
           </div>
 
           <div hidden={step !== 3}>
-            <Form.Item label="检索设置" name="search_method">
-              <Radio.Group optionType="button" buttonStyle="solid">
-                <Radio.Button value="semantic_search">向量检索</Radio.Button>
-                <Radio.Button value="full_text_search">全文检索</Radio.Button>
-                <Radio.Button value="hybrid_search">混合检索（推荐）</Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-            <Space align="start" wrap>
-              <Form.Item label="Top K" name="top_k">
-                <InputNumber min={1} max={20} />
-              </Form.Item>
-              <Form.Item
-                label="启用分数阈值"
-                name="score_threshold_enabled"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label="最低分数" name="score_threshold">
-                <InputNumber min={0} max={1} step={0.05} />
-              </Form.Item>
-            </Space>
-            <Form.Item
-              label="启用重排模型"
-              name="reranking_enable"
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
-            <Form.Item label="重排模型" name="reranking_model_name">
-              <Select
-                allowClear
-                placeholder="可选"
-                options={rerankModels.map((model) => ({
-                  value: model.model,
-                  label: `${model.providerLabel} / ${model.modelLabel}`,
-                }))}
-                onChange={(value) => {
-                  const model = rerankModels.find((item) => item.model === value)
-                  form.setFieldValue('reranking_provider_name', model?.provider)
-                }}
-              />
-            </Form.Item>
-            <Form.Item name="reranking_provider_name" hidden>
-              <Input />
-            </Form.Item>
-            {(values?.search_method ?? initialValues.search_method) === 'hybrid_search' && (
-              <Space align="start" wrap>
-                <Form.Item label="语义权重" name="vector_weight">
-                  <InputNumber
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    precision={2}
-                    onChange={(value) => {
-                      const vectorWeight = clampWeight(value)
-                      form.setFieldsValue({
-                        vector_weight: vectorWeight,
-                        keyword_weight: complementaryWeight(vectorWeight),
-                      })
-                    }}
-                  />
+            <div className="retrieval-settings-stack">
+              <section className="retrieval-settings-section">
+                <div className="retrieval-settings-section-title">检索方式</div>
+                <Form.Item name="search_method" noStyle>
+                  <Radio.Group
+                    className="retrieval-settings-choice-group"
+                    optionType="button"
+                    buttonStyle="solid"
+                  >
+                    <Radio.Button value="semantic_search">向量检索</Radio.Button>
+                    <Radio.Button value="full_text_search">全文检索</Radio.Button>
+                    <Radio.Button value="hybrid_search">混合检索（推荐）</Radio.Button>
+                  </Radio.Group>
                 </Form.Item>
-                <Form.Item label="关键词权重" name="keyword_weight">
-                  <InputNumber
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    precision={2}
-                    onChange={(value) => {
-                      const keywordWeight = clampWeight(value)
-                      form.setFieldsValue({
-                        vector_weight: complementaryWeight(keywordWeight),
-                        keyword_weight: keywordWeight,
-                      })
-                    }}
-                  />
+              </section>
+
+              <section className="retrieval-settings-section">
+                <div className="retrieval-settings-section-title">
+                  {isHybridSearch ? '排序策略' : '重排设置'}
+                </div>
+                {isHybridSearch && (
+                  <div className="retrieval-settings-section-description">
+                    {currentValues.reranking_mode === 'weighted_score'
+                      ? '按语义与关键词权重融合排序结果'
+                      : '调用 Rerank 模型对候选结果重新排序'}
+                  </div>
+                )}
+                {isHybridSearch ? (
+                  <Form.Item name="reranking_mode" noStyle>
+                    <Radio.Group
+                      className="retrieval-settings-choice-group"
+                      optionType="button"
+                      buttonStyle="solid"
+                    >
+                      <Radio.Button value="weighted_score">权重设置</Radio.Button>
+                      <Radio.Button value="reranking_model">Rerank 模型</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+                ) : (
+                  <Form.Item
+                    label="启用重排模型"
+                    name="reranking_enable"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                )}
+                {useRerankModel && (
+                  <Form.Item
+                    className="retrieval-settings-followup"
+                    label="重排模型"
+                    name="reranking_model_name"
+                    rules={[{ required: true, message: '请选择重排模型' }]}
+                  >
+                    <Select
+                      allowClear
+                      placeholder="请选择重排模型"
+                      options={rerankModels.map((model) => ({
+                        value: model.model,
+                        label: `${model.providerLabel} / ${model.modelLabel}`,
+                      }))}
+                      onChange={(value) => {
+                        const model = rerankModels.find((item) => item.model === value)
+                        form.setFieldValue('reranking_provider_name', model?.provider)
+                      }}
+                    />
+                  </Form.Item>
+                )}
+                <Form.Item name="reranking_provider_name" hidden>
+                  <Input />
                 </Form.Item>
-              </Space>
-            )}
+                {isHybridSearch && currentValues.reranking_mode === 'weighted_score' && (
+                  <Space className="retrieval-settings-followup" align="start" wrap>
+                    <Form.Item label="语义权重" name="vector_weight">
+                      <InputNumber
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        precision={2}
+                        onChange={(value) => {
+                          const vectorWeight = clampWeight(value)
+                          form.setFieldsValue({
+                            vector_weight: vectorWeight,
+                            keyword_weight: complementaryWeight(vectorWeight),
+                          })
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="关键词权重" name="keyword_weight">
+                      <InputNumber
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        precision={2}
+                        onChange={(value) => {
+                          const keywordWeight = clampWeight(value)
+                          form.setFieldsValue({
+                            vector_weight: complementaryWeight(keywordWeight),
+                            keyword_weight: keywordWeight,
+                          })
+                        }}
+                      />
+                    </Form.Item>
+                  </Space>
+                )}
+              </section>
+
+              <section className="retrieval-settings-section retrieval-settings-results">
+                <div className="retrieval-settings-section-title">结果参数</div>
+                <div className="retrieval-settings-results-grid">
+                  <Form.Item label="Top K" name="top_k">
+                    <InputNumber min={1} max={20} />
+                  </Form.Item>
+                  <Form.Item label="Score 阈值">
+                    <div className="score-threshold-control">
+                      <Form.Item
+                        name="score_threshold_enabled"
+                        valuePropName="checked"
+                        noStyle
+                      >
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item name="score_threshold" noStyle>
+                        <InputNumber
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          disabled={!currentValues.score_threshold_enabled}
+                        />
+                      </Form.Item>
+                    </div>
+                  </Form.Item>
+                </div>
+              </section>
+            </div>
           </div>
 
           <div hidden={step !== 4}>
