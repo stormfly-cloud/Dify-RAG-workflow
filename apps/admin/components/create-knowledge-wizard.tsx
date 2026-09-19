@@ -679,7 +679,7 @@ export function CreateKnowledgeWizard({
                   </Form.Item>
                 ) : (
                   <Form.Item
-                    label="启用重排模型"
+                    label="启用Rerank模型"
                     name="reranking_enable"
                     valuePropName="checked"
                   >
