@@ -174,13 +174,144 @@ textarea {
   border-radius: 10px;
   background: #fff;
   line-height: 1.75;
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .message-row[data-role='user'] .message-bubble {
   border-color: #225c42;
   color: #fff;
   background: #225c42;
+  white-space: pre-wrap;
+}
+
+.assistant-thinking {
+  margin-bottom: 12px;
+  border: 1px solid #dfe8e2;
+  border-radius: 8px;
+  background: #f7faf8;
+  color: #53635a;
+  font-size: 13px;
+}
+
+.assistant-thinking summary {
+  padding: 9px 12px;
+  color: #315c43;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.assistant-thinking-content {
+  max-height: 260px;
+  overflow: auto;
+  padding: 0 12px 12px;
+  white-space: pre-wrap;
+}
+
+.answer-markdown {
+  overflow-wrap: anywhere;
+}
+
+.answer-markdown > :first-child {
+  margin-top: 0;
+}
+
+.answer-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.answer-markdown h1,
+.answer-markdown h2,
+.answer-markdown h3,
+.answer-markdown h4 {
+  margin: 18px 0 8px;
+  line-height: 1.4;
+}
+
+.answer-markdown h1 {
+  font-size: 20px;
+}
+
+.answer-markdown h2 {
+  font-size: 18px;
+}
+
+.answer-markdown h3,
+.answer-markdown h4 {
+  font-size: 16px;
+}
+
+.answer-markdown p,
+.answer-markdown ul,
+.answer-markdown ol,
+.answer-markdown blockquote,
+.answer-markdown pre,
+.answer-markdown table {
+  margin: 0 0 12px;
+}
+
+.answer-markdown ul,
+.answer-markdown ol {
+  padding-left: 24px;
+}
+
+.answer-markdown li + li {
+  margin-top: 5px;
+}
+
+.answer-markdown blockquote {
+  padding: 8px 12px;
+  border-left: 3px solid #86b29b;
+  background: #f4f8f5;
+  color: #53635a;
+}
+
+.answer-markdown code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #eef2ef;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.answer-markdown pre {
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #17231d;
+  color: #eaf3ed;
+}
+
+.answer-markdown pre code {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.answer-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.answer-markdown th,
+.answer-markdown td {
+  padding: 7px 9px;
+  border: 1px solid #dce3de;
+  text-align: left;
+  vertical-align: top;
+}
+
+.answer-markdown th {
+  background: #f4f8f5;
+  font-weight: 650;
+}
+
+.answer-markdown a {
+  color: #176b45;
+}
+
+.answer-placeholder {
+  color: #65736b;
 }
 
 .citation-list {

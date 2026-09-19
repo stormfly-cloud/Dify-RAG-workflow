@@ -2,9 +2,18 @@
 
 import { ArrowUp, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3100/api'
+
+// The monorepo's mobile app carries React 18 types, which conflict with
+// react-markdown's React 19 component signature during web type checking.
+const Markdown = ReactMarkdown as unknown as (props: {
+  children: string
+  remarkPlugins: Array<typeof remarkGfm>
+}) => any
 
 type KnowledgeScope = {
   id: string
@@ -27,6 +36,68 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   citations?: Citation[]
+}
+
+function parseAssistantContent(content: string) {
+  const openingTag = /<think>/i.exec(content)
+  if (!openingTag) {
+    return {
+      thinking: '',
+      answer: content.trimStart(),
+    }
+  }
+
+  const thinkingStart = openingTag.index + openingTag[0].length
+  const closingTag = /<\/think>/i.exec(content.slice(thinkingStart))
+  const thinkingEnd = closingTag
+    ? thinkingStart + closingTag.index
+    : content.length
+  const answerStart = closingTag
+    ? thinkingEnd + closingTag[0].length
+    : content.length
+
+  return {
+    thinking: content
+      .slice(thinkingStart, thinkingEnd)
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trim(),
+    answer: content
+      .slice(answerStart)
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trimStart(),
+  }
+}
+
+function AssistantAnswer({
+  content,
+  streaming,
+}: {
+  content: string
+  streaming: boolean
+}) {
+  const { thinking, answer } = parseAssistantContent(content)
+
+  return (
+    <>
+      {thinking && (
+        <details className="assistant-thinking">
+          <summary>思考过程</summary>
+          <div className="assistant-thinking-content">{thinking}</div>
+        </details>
+      )}
+      {answer ? (
+        <div className="answer-markdown">
+          <Markdown remarkPlugins={[remarkGfm]}>{answer}</Markdown>
+        </div>
+      ) : (
+        streaming && (
+          <div className="answer-placeholder">
+            {thinking ? '正在整理正式回答…' : '正在检索并整理资料…'}
+          </div>
+        )
+      )}
+    </>
+  )
 }
 
 function getUserId() {
@@ -236,7 +307,11 @@ export function ChatApp() {
             {messages.map((message) => (
               <article className="message-row" data-role={message.role} key={message.id}>
                 <div className="message-bubble">
-                  {message.content || (streaming ? '正在检索并整理资料…' : '')}
+                  {message.role === 'assistant' ? (
+                    <AssistantAnswer content={message.content} streaming={streaming} />
+                  ) : (
+                    message.content
+                  )}
                   {message.citations && message.citations.length > 0 && (
                     <div className="citation-list">
                       {message.citations.map((citation) => (
