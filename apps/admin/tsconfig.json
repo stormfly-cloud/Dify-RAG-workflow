@@ -5,6 +5,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
     "noEmit": true,
+    "declaration": false,
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {

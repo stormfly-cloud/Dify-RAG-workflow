@@ -146,6 +146,8 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
       tasks[0],
     [tasks],
   )
+  const activeTaskId = activeTask?.id
+  const activeTaskStatus = activeTask?.status
 
   const currentStage = useMemo(() => {
     if (activeTask && ['queued', 'running'].includes(activeTask.status)) {
@@ -163,28 +165,67 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
   }, [activeTask, documents])
 
   useEffect(() => {
-    if (!activeTask || !['queued', 'running'].includes(activeTask.status)) return
+    if (
+      !activeTaskId ||
+      !activeTaskStatus ||
+      !['queued', 'running'].includes(activeTaskStatus)
+    ) {
+      return
+    }
+
     const controller = new AbortController()
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let retryDelay = 1_000
+    let shouldReconnect = true
+    let connectionWarningShown = false
+
     setEvents([])
-    void subscribeToTaskEvents(
-      activeTask.id,
-      (event) => {
-        setEvents((current) => [
-          ...current.filter((item) => item.id !== event.id),
-          event as IngestionEvent,
-        ])
-        if (['completed', 'error'].includes(event.type) && activeId) {
-          void loadDetail(activeId)
+
+    const connect = async () => {
+      try {
+        await subscribeToTaskEvents(
+          activeTaskId,
+          (event) => {
+            setEvents((current) => [
+              ...current.filter((item) => item.id !== event.id),
+              event as IngestionEvent,
+            ])
+            if (['completed', 'error'].includes(event.type)) {
+              shouldReconnect = false
+              if (activeId) void loadDetail(activeId)
+            }
+          },
+          controller.signal,
+        )
+      } catch (error) {
+        if (controller.signal.aborted) return
+        if (!connectionWarningShown) {
+          connectionWarningShown = true
+          message.warning('构建进度连接暂时中断，系统会自动重试')
         }
-      },
-      controller.signal,
-    ).catch((error) => {
-      if (!controller.signal.aborted) {
-        message.error(error instanceof Error ? error.message : '订阅进度失败')
       }
-    })
-    return () => controller.abort()
-  }, [activeId, activeTask, loadDetail, message])
+
+      if (!controller.signal.aborted && shouldReconnect) {
+        retryTimer = setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 2, 10_000)
+          void connect()
+        }, retryDelay)
+      }
+    }
+
+    void connect()
+    return () => {
+      shouldReconnect = false
+      if (retryTimer) clearTimeout(retryTimer)
+      controller.abort()
+    }
+  }, [
+    activeId,
+    activeTaskId,
+    activeTaskStatus,
+    loadDetail,
+    message,
+  ])
 
   useEffect(() => {
     if (!activeId) return

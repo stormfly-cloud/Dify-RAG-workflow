@@ -8,6 +8,15 @@ const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3100/api'
 const SESSION_KEY = 'heritage-admin-session'
 
+function getApiUrl(path: string) {
+  return `${apiBaseUrl}${path}`
+}
+
+function getNetworkErrorMessage(path: string, error: unknown) {
+  const detail = error instanceof Error && error.message ? `（${error.message}）` : ''
+  return `无法连接管理 API：${getApiUrl(path)}${detail}。请确认 API 服务已启动、地址可访问，并检查浏览器 Origin 是否在 CORS 白名单中。`
+}
+
 export function getAdminToken() {
   return typeof window === 'undefined' ? '' : localStorage.getItem(SESSION_KEY) ?? ''
 }
@@ -27,10 +36,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(getApiUrl(path), {
+      ...init,
+      headers,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new Error(getNetworkErrorMessage(path, error))
+  }
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as
       | { message?: string; code?: string }
@@ -216,16 +231,22 @@ export async function subscribeToTaskEvents(
   }) => void,
   signal: AbortSignal,
 ) {
-  const response = await fetch(
-    `${apiBaseUrl}/admin/ingestion-tasks/${taskId}/events`,
-    {
+  const path = `/admin/ingestion-tasks/${taskId}/events`
+  let response: Response
+  try {
+    response = await fetch(getApiUrl(path), {
       headers: {
         Authorization: `Bearer ${getAdminToken()}`,
         Accept: 'text/event-stream',
       },
       signal,
-    },
-  )
+    })
+  } catch (error) {
+    if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      throw error
+    }
+    throw new Error(getNetworkErrorMessage(path, error))
+  }
   if (!response.ok || !response.body) {
     throw new Error(`事件流连接失败：${response.status}`)
   }

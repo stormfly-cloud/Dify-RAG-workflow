@@ -42,6 +42,7 @@ services:
     environment:
       DATABASE_URL: postgres://${APP_POSTGRES_USER:-heritage}:${APP_POSTGRES_PASSWORD}@app-postgres:5432/${APP_POSTGRES_DB:-heritage}
       REDIS_URL: redis://app-redis:6379
+      DIFY_API_BASE_URL: http://nginx/v1
       API_PORT: 3100
       ENABLE_INGESTION_WORKER: "false"
     depends_on:
@@ -68,6 +69,7 @@ services:
     environment:
       DATABASE_URL: postgres://${APP_POSTGRES_USER:-heritage}:${APP_POSTGRES_PASSWORD}@app-postgres:5432/${APP_POSTGRES_DB:-heritage}
       REDIS_URL: redis://app-redis:6379
+      DIFY_API_BASE_URL: http://nginx/v1
       ENABLE_INGESTION_WORKER: "true"
     depends_on:
       app-api:
