@@ -6,8 +6,10 @@ import {
   Descriptions,
   Drawer,
   Empty,
+  Form,
   Input,
   List,
+  Modal,
   Progress,
   Space,
   Spin,
@@ -20,6 +22,8 @@ import type { ColumnsType } from 'antd/es/table'
 import {
   CloudUploadOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
   FileSearchOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -79,6 +83,7 @@ function statusTag(status: string) {
 
 export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
   const { message, modal } = App.useApp()
+  const [editForm] = Form.useForm<{ name: string; description: string }>()
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [activeId, setActiveId] = useState<string>()
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase>()
@@ -99,13 +104,20 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
   const [chunkDrawerOpen, setChunkDrawerOpen] = useState(false)
   const [chunkDocument, setChunkDocument] = useState<KnowledgeDocument>()
   const [chunkLoading, setChunkLoading] = useState(false)
+  const [editingKnowledgeBase, setEditingKnowledgeBase] =
+    useState<KnowledgeBase>()
+  const [editOpen, setEditOpen] = useState(false)
+  const [savingKnowledgeBase, setSavingKnowledgeBase] = useState(false)
 
-  const loadKnowledgeBases = useCallback(async (preferredId?: string) => {
+  const loadKnowledgeBases = useCallback(async (preferredId?: string | null) => {
     setLoading(true)
     try {
       const result = await adminApi.listKnowledgeBases(keyword)
       setKnowledgeBases(result)
-      const nextId = preferredId ?? activeId ?? result[0]?.id
+      const nextId =
+        preferredId === undefined
+          ? activeId ?? result[0]?.id
+          : preferredId ?? undefined
       setActiveId(nextId)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载知识库失败')
@@ -275,6 +287,70 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  const openEditKnowledgeBase = (knowledgeBaseToEdit: KnowledgeBase) => {
+    setEditingKnowledgeBase(knowledgeBaseToEdit)
+    editForm.setFieldsValue({
+      name: knowledgeBaseToEdit.name,
+      description: knowledgeBaseToEdit.description,
+    })
+    setEditOpen(true)
+  }
+
+  const saveKnowledgeBase = async () => {
+    if (!editingKnowledgeBase) return
+    const values = await editForm.validateFields()
+    setSavingKnowledgeBase(true)
+    try {
+      const updated = await adminApi.updateKnowledgeBase(editingKnowledgeBase.id, {
+        name: values.name.trim(),
+        description: values.description?.trim() ?? '',
+      })
+      setEditOpen(false)
+      setEditingKnowledgeBase(undefined)
+      if (activeId === updated.id) {
+        setKnowledgeBase(updated)
+      }
+      await loadKnowledgeBases(activeId ?? updated.id)
+      message.success('知识库已更新')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '更新知识库失败')
+    } finally {
+      setSavingKnowledgeBase(false)
+    }
+  }
+
+  const deleteKnowledgeBase = (knowledgeBaseToDelete: KnowledgeBase) => {
+    modal.confirm({
+      title: `删除知识库“${knowledgeBaseToDelete.name}”？`,
+      content:
+        '删除后将同步删除 Dify 中的知识库及本地文档记录，此操作不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await adminApi.deleteKnowledgeBase(knowledgeBaseToDelete.id)
+          const deletingActive = activeId === knowledgeBaseToDelete.id
+          const nextId = deletingActive
+            ? knowledgeBases.find((item) => item.id !== knowledgeBaseToDelete.id)?.id
+            : activeId
+          if (deletingActive) {
+            setKnowledgeBase(undefined)
+            setDocuments([])
+            setTasks([])
+            setEvents([])
+            setRetrievalResults([])
+          }
+          await loadKnowledgeBases(nextId ?? null)
+          message.success('知识库已删除')
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '删除知识库失败')
+          throw error
+        }
+      },
+    })
+  }
+
   const columns: ColumnsType<KnowledgeDocument> = [
     {
       title: '文档',
@@ -417,8 +493,35 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
                 onClick={() => setActiveId(item.id)}
               >
                 <div className="knowledge-list-name">
-                  <span>{item.name}</span>
+                  <span title={item.name}>{item.name}</span>
                   {statusTag(item.status)}
+                  <Space size={0} className="knowledge-list-actions">
+                    <Tooltip title="编辑知识库">
+                      <Button
+                        type="text"
+                        size="small"
+                        aria-label={`编辑知识库 ${item.name}`}
+                        icon={<EditOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openEditKnowledgeBase(item)
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="删除知识库">
+                      <Button
+                        danger
+                        type="text"
+                        size="small"
+                        aria-label={`删除知识库 ${item.name}`}
+                        icon={<DeleteOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          deleteKnowledgeBase(item)
+                        }}
+                      />
+                    </Tooltip>
+                  </Space>
                 </div>
                 <div className="knowledge-list-meta">
                   {item.documentCount} 个文档 · {item.publishedDocumentCount} 个已发布
@@ -686,6 +789,39 @@ export function KnowledgeWorkspace({ onLogout }: { onLogout: () => void }) {
           setActiveId(id)
         }}
       />
+
+      <Modal
+        title="编辑知识库"
+        open={editOpen}
+        confirmLoading={savingKnowledgeBase}
+        okText="保存"
+        cancelText="取消"
+        destroyOnHidden
+        onOk={() => void saveKnowledgeBase()}
+        onCancel={() => {
+          setEditOpen(false)
+          setEditingKnowledgeBase(undefined)
+          editForm.resetFields()
+        }}
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item
+            label="知识库名称"
+            name="name"
+            rules={[{ required: true, whitespace: true, max: 40 }]}
+          >
+            <Input maxLength={40} showCount placeholder="请输入知识库名称" />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea
+              maxLength={400}
+              showCount
+              rows={5}
+              placeholder="请输入知识库描述"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Drawer
         width={720}

@@ -133,11 +133,6 @@ export class KnowledgeService {
       await this.dify.updateKnowledgeBase(current.difyDatasetId, {
         name: parsed.name,
         description: parsed.description,
-        indexing_technique: parsed.indexing_technique,
-        embedding_model: parsed.embedding_model,
-        embedding_model_provider: parsed.embedding_model_provider,
-        retrieval_model: parsed.retrieval_model as DifyRetrievalModel | undefined,
-        summary_index_setting: parsed.summary_index_setting,
       })
     }
     await this.database.query(
@@ -145,30 +140,10 @@ export class KnowledgeService {
       UPDATE knowledge_bases SET
         name = COALESCE($2, name),
         description = COALESCE($3, description),
-        indexing_technique = COALESCE($4, indexing_technique),
-        embedding_model = COALESCE($5, embedding_model),
-        embedding_model_provider = COALESCE($6, embedding_model_provider),
-        chunk_structure = COALESCE($7, chunk_structure),
-        retrieval_model = COALESCE($8, retrieval_model),
-        process_rule = COALESCE($9, process_rule),
-        metadata = COALESCE($10, metadata),
-        doc_language = COALESCE($11, doc_language),
         updated_at = now()
       WHERE id = $1
       `,
-      [
-        id,
-        parsed.name ?? null,
-        parsed.description ?? null,
-        parsed.indexing_technique ?? null,
-        parsed.embedding_model ?? null,
-        parsed.embedding_model_provider ?? null,
-        parsed.chunk_structure ?? null,
-        parsed.retrieval_model ? JSON.stringify(parsed.retrieval_model) : null,
-        parsed.process_rule ? JSON.stringify(parsed.process_rule) : null,
-        parsed.metadata ? JSON.stringify(parsed.metadata) : null,
-        parsed.doc_language ?? null,
-      ],
+      [id, parsed.name ?? null, parsed.description ?? null],
     )
     return this.get(id)
   }

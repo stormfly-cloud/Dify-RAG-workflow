@@ -297,7 +297,10 @@ export const createKnowledgeBaseSchema = createKnowledgeBaseBaseSchema.superRefi
   validateKnowledgeBaseConsistency,
 )
 
-export const updateKnowledgeBaseSchema = createKnowledgeBaseBaseSchema.partial()
+export const updateKnowledgeBaseSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  description: z.string().trim().max(400).optional(),
+})
 
 export const textDocumentSchema = z.object({
   name: z.string().trim().min(1).max(200),

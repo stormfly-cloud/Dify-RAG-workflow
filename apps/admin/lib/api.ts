@@ -96,6 +96,19 @@ export const adminApi = {
     return request<KnowledgeBase>(`/admin/knowledge-bases/${id}`)
   },
 
+  updateKnowledgeBase(id: string, input: { name: string; description: string }) {
+    return request<KnowledgeBase>(`/admin/knowledge-bases/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    })
+  },
+
+  deleteKnowledgeBase(id: string) {
+    return request<{ result: string }>(`/admin/knowledge-bases/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
   createKnowledgeBase(input: Record<string, unknown>) {
     return request<KnowledgeBase>('/admin/knowledge-bases', {
       method: 'POST',

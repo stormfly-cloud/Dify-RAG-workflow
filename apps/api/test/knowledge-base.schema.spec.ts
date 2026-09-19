@@ -1,4 +1,7 @@
-import { createKnowledgeBaseSchema } from '@heritage/contracts'
+import {
+  createKnowledgeBaseSchema,
+  updateKnowledgeBaseSchema,
+} from '@heritage/contracts'
 import { describe, expect, it } from 'vitest'
 
 const baseInput = {
@@ -177,5 +180,24 @@ describe('createKnowledgeBaseSchema', () => {
     ],
   ])('rejects %s', (_name, input) => {
     expect(createKnowledgeBaseSchema.safeParse(input).success).toBe(false)
+  })
+})
+
+describe('updateKnowledgeBaseSchema', () => {
+  it('parses only editable name and description fields without create defaults', () => {
+    const result = updateKnowledgeBaseSchema.safeParse({
+      name: 'Updated knowledge base',
+      description: 'Updated description',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toEqual({
+        name: 'Updated knowledge base',
+        description: 'Updated description',
+      })
+      expect(result.data).not.toHaveProperty('indexing_technique')
+      expect(result.data).not.toHaveProperty('retrieval_model')
+    }
   })
 })

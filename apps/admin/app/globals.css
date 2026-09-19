@@ -94,6 +94,23 @@ body {
   font-weight: 600;
 }
 
+.knowledge-list-name > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-list-actions {
+  flex: 0 0 auto;
+}
+
+.knowledge-list-actions .ant-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
 .knowledge-list-meta {
   margin-top: 6px;
   color: #667085;

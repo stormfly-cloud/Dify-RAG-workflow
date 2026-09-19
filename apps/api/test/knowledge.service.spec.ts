@@ -147,3 +147,43 @@ describe('KnowledgeService.create', () => {
     })
   })
 })
+
+describe('KnowledgeService.update', () => {
+  it('updates only the name and description without sending indexing defaults to Dify', async () => {
+    const ready = knowledgeBase({
+      status: 'ready',
+      difyDatasetId: 'dataset-ready',
+      difyPublishFieldId: 'field-ready',
+    })
+    const repository = {
+      findKnowledgeBase: vi.fn().mockResolvedValue(ready),
+    }
+    const database = {
+      query: vi.fn().mockResolvedValue({ rows: [] }),
+    }
+    const dify = {
+      updateKnowledgeBase: vi.fn().mockResolvedValue({ id: 'dataset-ready' }),
+    }
+    const service = new KnowledgeService(
+      repository as never,
+      database as never,
+      {} as never,
+      dify as never,
+    )
+
+    await service.update('kb-1', {
+      name: 'Updated knowledge base',
+      description: 'Updated description',
+    })
+
+    expect(dify.updateKnowledgeBase).toHaveBeenCalledWith('dataset-ready', {
+      name: 'Updated knowledge base',
+      description: 'Updated description',
+    })
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE knowledge_bases SET'),
+      ['kb-1', 'Updated knowledge base', 'Updated description'],
+    )
+    expect(database.query.mock.calls[0]?.[0]).not.toContain('indexing_technique')
+  })
+})
