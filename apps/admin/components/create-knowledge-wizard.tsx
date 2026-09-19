@@ -80,8 +80,8 @@ const initialValues: WizardValues = {
   top_k: 4,
   score_threshold_enabled: false,
   score_threshold: 0.5,
-  reranking_mode: 'weighted_score',
-  reranking_enable: false,
+  reranking_mode: 'reranking_model',
+  reranking_enable: true,
   vector_weight: 0.7,
   keyword_weight: 0.3,
 }
@@ -163,6 +163,13 @@ export function CreateKnowledgeWizard({
       .then(([embedding, rerank]) => {
         setEmbeddingModels(embedding)
         setRerankModels(rerank)
+        const defaultRerankModel = rerank[0]
+        if (defaultRerankModel) {
+          form.setFieldsValue({
+            reranking_model_name: getModelKey(defaultRerankModel),
+            reranking_provider_name: defaultRerankModel.provider,
+          })
+        }
         setModelLoadError('')
       })
       .catch((error: unknown) => {
@@ -170,7 +177,7 @@ export function CreateKnowledgeWizard({
         setRerankModels([])
         setModelLoadError(error instanceof Error ? error.message : '模型列表加载失败')
       })
-  }, [open])
+  }, [form, open])
 
   const payload = useMemo(() => {
     const current = currentValues
